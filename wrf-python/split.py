@@ -38,7 +38,7 @@ def concat(args):
 	os.remove(file_name)
 
     # Move the files to the right directory
-	shutil.move(file_name2, dir)
+	shutil.move(file_name2,path)
 
 
 if __name__ == "__main__":
