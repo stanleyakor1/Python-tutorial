@@ -25,7 +25,7 @@ if __name__ == '__main__':
 	path = '/bsuhome/stanleyakor/scratch/'+ scheme +'/' 
 
 	home_dir = os.path.expanduser("~")
-	output_dir = os.path.join(home_dir,'DJF',scheme)
+	output_dir = os.path.join(home_dir,'DJF',scheme,'/')
 
 	files =  sorted(glob.glob(path + 'wrfout_d02_2022-12-01*'))
 	d = xr.open_mfdataset(files, concat_dim='Time',combine='nested')
