@@ -67,7 +67,15 @@ def hourly_to_daily(input_path, input_file, in_var_name, out_var_name, operator,
 
     return ds_wrf_new
 
+def max_swe(ds):
+    day = 0
+    max = 0
+    for i in range(ds.shape[0]):
+        if(ds.values.max() > max):
+            max = ds.values.max()
+            day = i
 
+    return i
 
 def get_wrf_xy(geog,lat, lon):
     #lat = 38.89
@@ -79,3 +87,46 @@ def get_wrf_xy(geog,lat, lon):
     ixlat = np.argwhere(dist == mindist)[0][0]
     ixlon = np.argwhere(dist == mindist)[0][1]
     return ixlat, ixlon
+
+def make_snodas_Wrf_plots(file_list, title, lat, lon, save_title,label, show=True, subplots=(1,3), colour='terrain', save=True):
+
+    vmax = max(np.nanmax(ds.values) for ds in file_list)
+    vmin = min(np.nanmin(ds.values) for ds in file_list)
+
+    fig = plt.figure(figsize=(10, 15))
+
+    grid = ImageGrid(fig, 111,          # as in plt.subplot(111)
+                 nrows_ncols=subplots,
+                 axes_pad=0.3,
+                 share_all=True,
+                 cbar_location="bottom",
+                 cbar_mode="single",
+                 cbar_size="4%",  
+                 cbar_pad=0.15,
+                )
+
+    for i, ax in enumerate(grid):
+        im = ax.imshow(file_list[i],extent=(lon.min(), lon.max(), lat.min(), lat.max()),vmax=vmax, vmin = vmin, cmap=colour, origin='lower', alpha=1.0)
+        ax.set_title(title[i])
+        ax.xaxis.set_major_locator(plt.MultipleLocator(base=1.0))
+        ax.yaxis.set_major_locator(plt.MultipleLocator(base=0.4))
+   
+
+    # for ax in ax.flat:
+    lon_ticks = ax.get_xticks()
+    lat_ticks = ax.get_yticks()
+    lon_labels = [f'{abs(lon):.2f}°{"W" if lon < 0 else "E"}' for lon in lon_ticks]
+    lat_labels = [f'{abs(lat):.2f}°{"S" if lat < 0 else "N"}' for lat in lat_ticks]
+    ax.set_xticklabels(lon_labels)
+    ax.set_yticklabels(lat_labels)
+    
+    # Colorbar
+    cbar = ax.cax.colorbar(im)
+    cbar_X = ax.cax.toggle_label(True)
+    cbar.set_label(label)
+
+    if save:
+        plt.savefig(save_title+'.pdf',dpi=600)
+    
+    if show:
+        plt.show()
