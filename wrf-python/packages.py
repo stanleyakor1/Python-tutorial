@@ -276,3 +276,128 @@ class getclosest():
             plt.savefig(self.save_name+'.pdf',dpi=600)
             
         plt.show()
+
+
+'''
+Compare snotel values across multiple WRF microphysics schemes.
+ToDos:
+(1) Tidy functions
+(2) Very results
+(3) Clean the code
+(4) Add option if the smallest bias sites aren't same across schemes
+
+'''
+class CompareScheme(getclosest):  
+    def __init__(self, path_to_header, path_to_csv, path_to_geog, path_to_wrf_file, save_name,  save = True):
+        super().__init__(path_to_header, path_to_csv, path_to_geog, path_to_wrf_file, save_name,save)
+        self.allfile = {}
+        self.check = False
+
+        '''
+        Initialize the first file, this certainly should be improved!
+        
+        '''
+        self.allfile['WSM6'] = self.wrf
+    def compare_multiple(self,diction):
+        for key,value in diction.items():
+            self.wrf = xr.open_dataset(value)
+            self.allfile[key] = self.wrf
+        return self.allfile
+        
+    def read_multiple(self,diction):
+        all_file = self.compare_multiple(diction)
+        all_files_dict = {}
+        for key , file in all_file.items():
+            self.wrf_file = file['PRCP']
+            smallest_dict, filtered_dict = self.read_csv()
+            all_files_dict[key] = smallest_dict,filtered_dict
+
+           
+        # Get the keys from the first sub-dictionary
+        keys_to_check = set(all_files_dict[next(iter(all_files_dict))][0].keys())
+        #print(keys_to_check)
+        
+        # Iterate through the rest of the sub-dictionaries
+        for key in all_files_dict:
+            sub_dict_keys = all_files_dict[key][0].keys()
+            if keys_to_check != set(sub_dict_keys):
+                print(f"Keys in sub-dictionary '{key}' do not match.")
+                break
+        else:
+            print("Keys in all sub-dictionaries match.")
+            self.check = True
+
+
+        # If all schemes have best estimate at the same time, proceed
+        if self.check:
+            return all_files_dict
+
+        # ToDo: Add the false case!
+        return None
+
+    def extract(self,file,ixlat,ixlon):
+        return file.isel(south_north = ixlat, west_east = ixlon).values
+        
+    def smallest(self,diction):
+        all_dict = self.get_wrf_xy()
+        allfiles = self.read_multiple(diction)
+        schemes = list(allfiles.keys())
+        wrf_files = self.compare_multiple(diction)
+
+        # Since all the sites are the same for all schemes
+        # Extract sites ID for only one of them
+        filtered_dict = next(iter(allfiles.items()))[1][1]
+        allkeys = np.array(list(filtered_dict.keys()))
+        
+        #print(filtered_dict)
+        fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+                
+        for index, key in enumerate(allkeys):
+
+            ax = axes[index // 3, index % 3]
+            row, col = divmod(index, 3)
+            name = f'df_{key}.csv'
+            path = self.path_to_csv+'/'+name
+            generic = f'{filtered_dict[key]} ({key}) Precipitation Accumulation (in) Start of Day Values'
+            df = pd.read_csv(path)
+            df = df[(df['Date'] >=self.start) & (df['Date'] <= self.end)]
+            date_range = pd.date_range(self.start, self.end, freq='1D')
+            df_filtered = df[generic].tolist()
+            df_filtered = [value * 25.4 for value in df_filtered]
+            ixlat,ixlon = all_dict[str(key)]
+            #print(ixlat,ixlon)
+            ax.plot(date_range,df_filtered,'r--', label=f'snotel')
+
+            for key1,value in wrf_files.items():
+                
+                wrf_precip = self.extract(value['PRCP'],ixlat,ixlon)[2:-1] # should be adjust according to the input data
+                ax.plot(date_range,wrf_precip, label=f'{key1}')
+
+            ax.set_title(f'{filtered_dict[key]} ({key})')
+            ax.legend()
+            
+            if row == 1:  # Only for the bottom row
+                ax.set_xlabel('Day')
+            else:
+                ax.set_xlabel('')
+                
+            if col == 0:
+                ax.set_ylabel('Precipitation (mm)')
+            ax.legend()
+        
+                    # Set x-axis locator and formatter for exterior plots
+            if row ==1:
+                ax.xaxis.set_major_locator(mdates.WeekdayLocator())
+                ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+                ax.tick_params(axis='x', rotation=45)
+            else:
+                ax.xaxis.set_major_locator(plt.NullLocator())  # Hide x-axis locator
+                ax.set_xlabel('')  # Set x-label to empty string
+            
+        # Adjust layout and show plots
+        plt.tight_layout()
+
+        # if self.save:
+        #     plt.savefig(self.save_name+'.pdf',dpi=600)
+            
+        plt.show()
