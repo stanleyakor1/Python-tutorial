@@ -82,6 +82,7 @@ def max_swe(ds):
 
     return i
 
+
 def get_wrf_xy(geog,lat, lon):
     #lat = 38.89
     #lon = -106.95
@@ -135,6 +136,27 @@ def make_snodas_Wrf_plots(file_list, title, lat, lon, save_title,label, show=Tru
     
     if show:
         plt.show()
+
+class precip_accumulate():
+    def __init__(self, path, save_name, var_list):
+        self.save_name = save_name
+        self.var_list = var_list
+        self.wrf = xr.open_dataset(path)
+        self.wrf = self.wrf.swap_dims({'Time':'XTIME'})
+        self.new_array = self.wrf[self.var_list].resample(XTIME = '24H').mean(dim = 'XTIME') # create daily means of few variables
+        
+    def calc_precip(cum_precip, bucket_precip):
+        return  cum_precip + bucket_precip * 100.0
+
+    # # Daily Aggregations (hourly to daily)
+    def main(self):
+        self.wrf['PRCP'] = self.wrf['RAINNC']
+        self.wrf['PRCP'].values = self.calc_precip(self.wrf['RAINNC'],self.wrf['I_RAINNC'])
+        
+        # Compute accumulative precip for each day
+        self.new_array['PRCP'] = self.wrf['PRCP'].resample(XTIME = '24H').max(dim = 'XTIME')
+        
+        new_array.to_netcdf(path)
 
 
 class getclosest():
@@ -209,7 +231,7 @@ class getclosest():
             df_filtered = [value * 25.4 for value in df_filtered]
             ixlat,ixlon = dict[str(sta_id[id])]
             wrf_precip = self.extract_precip(ixlat,ixlon)
-            wrf_precip = wrf_precip[2:-1]
+            wrf_precip = wrf_precip[2:108]
             bias = (df_filtered - wrf_precip).mean()
             self.feat[sta_id[id]] = bias
             names[sta_id[id]]=sta_names[id]
@@ -245,7 +267,7 @@ class getclosest():
             df_filtered = df[generic].tolist()
             df_filtered = [value * 25.4 for value in df_filtered]
             ixlat,ixlon = all_dict[str(key)]
-            wrf_precip = self.extract_precip(ixlat,ixlon)[2:-1] # should be adjust according to the input data
+            wrf_precip = self.extract_precip(ixlat,ixlon)[2:108] # should be adjust according to the input data
             ax.plot(date_range,df_filtered,'r--', label=f'snotel')
             ax.plot(date_range,wrf_precip, label=f'WSM6')
             ax.set_title(f'{filtered_dict[key]} ({key})')
@@ -285,10 +307,11 @@ ToDos:
 (2) Very results
 (3) Clean the code
 (4) Add option if the smallest bias sites aren't same across schemes
+(5) Unify the dates in the nc files
 
 '''
 class CompareScheme(getclosest):  
-    def __init__(self, path_to_header, path_to_csv, path_to_geog, path_to_wrf_file, save_name,  save = True):
+    def __init__(self, path_to_header, path_to_csv, path_to_geog, path_to_wrf_file, save_name, reference, save = True):
         super().__init__(path_to_header, path_to_csv, path_to_geog, path_to_wrf_file, save_name,save)
         self.allfile = {}
         self.check = False
@@ -297,7 +320,7 @@ class CompareScheme(getclosest):
         Initialize the first file, this certainly should be improved!
         
         '''
-        self.allfile['WSM6'] = self.wrf
+        self.allfile[reference] = self.wrf
     def compare_multiple(self,diction):
         for key,value in diction.items():
             self.wrf = xr.open_dataset(value)
@@ -329,11 +352,8 @@ class CompareScheme(getclosest):
 
 
         # If all schemes have best estimate at the same time, proceed
-        if self.check:
-            return all_files_dict
-
-        # ToDo: Add the false case!
-        return None
+        #if self.check:
+        return all_files_dict
 
     def extract(self,file,ixlat,ixlon):
         return file.isel(south_north = ixlat, west_east = ixlon).values
@@ -347,6 +367,7 @@ class CompareScheme(getclosest):
         # Since all the sites are the same for all schemes
         # Extract sites ID for only one of them
         filtered_dict = next(iter(allfiles.items()))[1][1]
+        filtered_dict = dict(sorted(filtered_dict.items()))
         allkeys = np.array(list(filtered_dict.keys()))
         
         #print(filtered_dict)
@@ -370,7 +391,7 @@ class CompareScheme(getclosest):
 
             for key1,value in wrf_files.items():
                 
-                wrf_precip = self.extract(value['PRCP'],ixlat,ixlon)[2:-1] # should be adjust according to the input data
+                wrf_precip = self.extract(value['PRCP'],ixlat,ixlon)[2:108] # should be adjust according to the input data
                 ax.plot(date_range,wrf_precip, label=f'{key1}')
 
             ax.set_title(f'{filtered_dict[key]} ({key})')
