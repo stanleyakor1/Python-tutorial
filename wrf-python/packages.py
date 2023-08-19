@@ -8,6 +8,7 @@ import matplotlib.colors as colors
 import matplotlib.patches as patches
 import glob
 import subprocess
+from netCDF4 import Dataset
 import os
 import multiprocessing as mp
 import sys
@@ -21,7 +22,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from wrf import (getvar, to_np, get_cartopy, latlon_coords, vertcross, ll_to_xy,
                  cartopy_xlim, cartopy_ylim, interpline, CoordPair, destagger, 
                  interplevel)
-
+from matplotlib.colors import LogNorm
 # Block all future warnings
 warnings.filterwarnings("ignore")
 
@@ -176,7 +177,9 @@ class getclosest():
 
     def collect_snodas_info(self):
         df = pd.read_csv(self.path_to_header)
-        df = df[(df['Latitude'] >= 42.80) & (df['Longitude'] > -116)]
+        df = df[(44.35894 >= df['Latitude']) & (df['Latitude'] >= 42.603153) &\
+                (-113.64972 >= df['Longitude']) & (df['Longitude'] >= -116.31619)]
+
         filtered_df = df[df['State'] == 'ID']
         sta_names = filtered_df['Station Name'].tolist()
         lat = filtered_df['Latitude'].tolist()
@@ -217,7 +220,10 @@ class getclosest():
         return self.wrf_file.isel(south_north = ixlat, west_east = ixlon).values
     
     def read_csv(self):
-    
+        
+        best = True
+        worse = False
+        
         lat, lon, sta_names, sta_id = self.collect_snodas_info()
         dict = self.get_wrf_xy()
         names = {}
@@ -236,9 +242,13 @@ class getclosest():
             self.feat[sta_id[id]] = bias
             names[sta_id[id]]=sta_names[id]
 
-        # Get the keys with the 5 smallest values
-        smallest_keys = sorted(self.feat, key=lambda k: abs(self.feat[k]))[:6]
+        # Get the keys with the smallest values (best 6)
+        if best:
+            smallest_keys = sorted(self.feat, key=lambda k: abs(self.feat[k]))[:6]
 
+        # Get largest bias snotel guages (worse 6 guages)
+        if worse:
+            smallest_keys = sorted(self.feat, key=lambda k: abs(self.feat[k]))[-6:]
         # Create a new dictionary with the smallest keys and their corresponding values
         smallest_dict = {key:self.feat[key] for key in smallest_keys}
         
@@ -247,6 +257,39 @@ class getclosest():
         
         filtered_dict = {key: value for key, value in names.items()  if key in list(smallest_dict.keys())}
         # #print(filtered_dict)
+        return smallest_dict, filtered_dict
+
+    def read_csv2(self):
+        
+        lat, lon, sta_names, sta_id = self.collect_snodas_info()
+        dict = self.get_wrf_xy()
+        names = {}
+        for id in range(len(sta_id)):
+            name = f'df_{sta_id[id]}.csv'
+            path = self.path_to_csv+'/'+name
+            generic = f'{sta_names[id]} ({sta_id[id]}) Precipitation Accumulation (in) Start of Day Values'
+            df = pd.read_csv(path)
+            df = df[(df['Date'] >=self.start) & (df['Date'] <= self.end)]
+            df_filtered = df[generic].tolist()
+            df_filtered = [value * 25.4 for value in df_filtered]
+            ixlat,ixlon = dict[str(sta_id[id])]
+            wrf_precip = self.extract_precip(ixlat,ixlon)
+            wrf_precip = wrf_precip[2:108]
+            bias = (df_filtered - wrf_precip).mean()
+            self.feat[sta_id[id]] = bias
+            names[sta_id[id]]=sta_names[id]
+
+        
+        smallest_keys = sorted(self.feat, key=lambda k: abs(self.feat[k]))
+       
+        # Create a new dictionary with the smallest keys and their corresponding values
+        smallest_dict = {key:self.feat[key] for key in smallest_keys}
+        
+        # # Basically extract the station names to make life easy in the next function
+        # # This definitely could be improved
+        
+        filtered_dict = {key: value for key, value in names.items()  if key in list(smallest_dict.keys())}
+        # # #print(filtered_dict)
         return smallest_dict, filtered_dict
 
     def compare_smallest(self):
@@ -326,7 +369,8 @@ class CompareScheme(getclosest):
             self.wrf = xr.open_dataset(value)
             self.allfile[key] = self.wrf
         return self.allfile
-        
+
+    # read multiple wrf files (schemes)
     def read_multiple(self,diction):
         all_file = self.compare_multiple(diction)
         all_files_dict = {}
@@ -348,7 +392,6 @@ class CompareScheme(getclosest):
                 break
         else:
             print("Keys in all sub-dictionaries match.")
-            self.check = True
 
 
         # If all schemes have best estimate at the same time, proceed
@@ -421,4 +464,64 @@ class CompareScheme(getclosest):
         # if self.save:
         #     plt.savefig(self.save_name+'.pdf',dpi=600)
             
+        plt.show()
+'''
+    Make spatial plot of a variable, and represent the bias in snotel estimates with a colour on the grid.
+
+'''
+
+class plot_snotel_grid(CompareScheme):
+    def __init__(self, path_to_header, path_to_csv, path_to_geog, path_to_wrf_file,\
+                 save_name, reference, save = True):
+        super().__init__(path_to_header, path_to_csv, path_to_geog, path_to_wrf_file, save_name,reference,save)
+        self.wrf_data = xr.open_dataset(path_to_geog)
+        self.elevation = self.wrf_data['HGT'].isel(Time=0)
+        self.lat,self.lon = self.wrf_data['XLAT'].isel(Time=0),self.wrf_data['XLONG'].isel(Time=0)
+        self.path = path_to_geog
+                     
+    def multiple_points(self):
+        a,b = self.read_csv2()
+        lat, lon, sta_names, sta_id = self.collect_snodas_info()
+        fig, ax = plt.subplots(figsize=(12, 12))
+        for key, value in a.items():
+            index = sta_id.index(key)
+            la, lo = lat[index], lon[index]
+        
+            if abs(value) >= 0 and abs(value) <= 10:
+                ax.scatter(lo, la, marker='D', s=15, color='black')
+                ax.text(lo - 0.02, la + 0.005, key, size=9, weight='bold')
+        
+            elif abs(value) >= 11 and abs(value) <= 20:
+                ax.scatter(lo, la, marker='D', s=15, color='red')
+                ax.text(lo - 0.02, la + 0.005, key, size=9, weight='bold')
+        
+            elif abs(value) >= 21 and abs(value) <= 30:
+                ax.scatter(lo, la, marker='D', s=15, color='blue')
+                ax.text(lo - 0.02, la + 0.005, key, size=9, weight='bold')
+        
+            else:
+                ax.scatter(lo, la, marker='D', s=15, color='green')
+                ax.text(lo - 0.02, la + 0.005, key, size=9, weight='bold')
+        
+        im = ax.imshow(self.elevation, extent=(self.lon.min(), self.lon.max(), self.lat.min(), self.lat.max()), cmap='terrain', origin='lower', alpha=1.0)
+
+  
+        plt.title('Elevation (m)')
+
+        # Modify latitude and longitude labels
+        lon_ticks = ax.get_xticks()
+        lat_ticks = ax.get_yticks()
+        lon_labels = [f'{abs(self.lon):.2f}°{"W" if self.lon < 0 else "E"}' for self.lon in lon_ticks]
+        lat_labels = [f'{abs(self.lat):.2f}°{"S" if self.lat < 0 else "N"}' for self.lat in lat_ticks]
+        ax.set_xticklabels(lon_labels)
+        ax.set_yticklabels(lat_labels)
+        
+        # Add gridlines
+        ax.grid(color='gray', linestyle='--', linewidth=0.0001)
+        
+        # Create a colorbar with the same height as the plot
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes('right', size='5%', pad=0.05)
+        plt.colorbar(im, cax=cax)
+
         plt.show()
