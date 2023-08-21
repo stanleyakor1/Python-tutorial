@@ -525,3 +525,67 @@ class plot_snotel_grid(CompareScheme):
         plt.colorbar(im, cax=cax)
 
         plt.show()
+
+
+def plot_wrf_domain(d01_path, d02_path, save = False):
+    # open file one
+    file_1 = xr.open_dataset(d01_path)
+    file_2 = xr.open_dataset(d02_path)
+    
+    # extract the height variable from domain 1
+    height = file_1['HGT'].isel(Time=0)
+    
+    # extract the lat/lon coordinates for domain 1
+    lat = file_1.XLAT.isel(Time=0)
+    lon = file_1.XLONG.isel(Time=0)
+    
+    # Get inner domain boundaries
+    file_2_latmin = file_2.XLAT.isel(Time=0).min().values
+    file_2_latmax = file_2.XLAT.isel(Time=0).max().values
+    
+    file_2_lonmin = file_2.XLONG.isel(Time=0).min().values
+    file_2_lonmax = file_2.XLONG.isel(Time=0).max().values
+    
+    # plot height of domain 1 and map out domain 2 using the domain boundaries
+    fig, ax = plt.subplots(figsize=(8, 6))
+    
+    im = ax.imshow(height, extent=(lon.min(), lon.max(), lat.min(), lat.max()), cmap='terrain', origin='lower', alpha=1.0)
+    
+    # Draw a rectangle around the inner domain boundaries
+    rect = patches.Rectangle(
+        (file_2_lonmin, file_2_latmin),
+        file_2_lonmax - file_2_lonmin,
+        file_2_latmax - file_2_latmin,
+        linewidth=2,
+        edgecolor='black',
+        facecolor='none'
+    )
+    ax.add_patch(rect)
+    
+    # Add text labels for domains
+    ax.text(lon.min(), lat.max(), 'D01', color='black', fontsize=12, fontweight='bold', va='top', ha='left')
+    ax.text(file_2_lonmin, file_2_latmax, 'D02', color='black', fontsize=12, fontweight='bold', va='bottom', ha='left')
+    
+    plt.title('Elevation (m)')
+    
+    # Modify latitude and longitude labels
+    lon_ticks = ax.get_xticks()
+    lat_ticks = ax.get_yticks()
+    lon_labels = [f'{abs(lon):.2f}°{"W" if lon < 0 else "E"}' for lon in lon_ticks]
+    lat_labels = [f'{abs(lat):.2f}°{"S" if lat < 0 else "N"}' for lat in lat_ticks]
+    ax.set_xticklabels(lon_labels)
+    ax.set_yticklabels(lat_labels)
+    
+    # Add gridlines
+    ax.grid(color='gray', linestyle='--', linewidth=0.2)
+    
+    # Create a colorbar with the same height as the plot
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes('right', size='5%', pad=0.05)
+    plt.colorbar(im, cax=cax)
+    
+    if save:
+        plt.savefig('WRF_domain', dpi=600)    
+    
+    # Display the plot
+    plt.show()
