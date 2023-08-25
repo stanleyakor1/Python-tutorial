@@ -84,6 +84,26 @@ def max_swe(ds):
     return i
 
 
+#Regrid snodas data to wrf resolution
+# sn_regrid = regrid_snodas(path2,snodas_file,'SWE')
+def regrid_snodas(wrf_file, snodas_file, var):
+    ds_snodas = xr.open_dataset(snodas_file)
+    ds_snodas= ds_snodas.swap_dims({'time': 'XTIME'})
+    ds_snodas = ds_snodas[var]
+
+    grid_template = xr.open_dataset(wrf_file)
+    LAT = grid_template.variables['XLAT'][0].copy()
+    LON =grid_template.variables['XLONG'][0].copy()
+
+    #create target grid
+    target_grid = xr.Dataset({'lat': LAT,'lon': LON})
+
+    # Create xESMF regridder using the target grid
+    regridder = xe.Regridder(ds_snodas, target_grid, 'bilinear')
+
+    return regridder(ds_snodas)
+
+
 def get_wrf_xy(geog,lat, lon):
     #lat = 38.89
     #lon = -106.95
@@ -138,26 +158,28 @@ def make_snodas_Wrf_plots(file_list, title, lat, lon, save_title,label, show=Tru
     if show:
         plt.show()
 
+#file = precip_accumulate(path,'WSM6_22_daily.nc',['TMN','I_RAINNC','SNOWH','RAINNC','T2','SNOW','U10','V10'])
+#file.main()
 class precip_accumulate():
-    def __init__(self, path, save_name, var_list):
+    def __init__(self,path, save_name, var_list):
         self.save_name = save_name
         self.var_list = var_list
         self.wrf = xr.open_dataset(path)
         self.wrf = self.wrf.swap_dims({'Time':'XTIME'})
         self.new_array = self.wrf[self.var_list].resample(XTIME = '24H').mean(dim = 'XTIME') # create daily means of few variables
         
-    def calc_precip(cum_precip, bucket_precip):
-        return  cum_precip + bucket_precip * 100.0
+    def calc_precip(self):
+        return  self.wrf['RAINNC']+self.wrf['I_RAINNC']* 100.0
 
     # # Daily Aggregations (hourly to daily)
     def main(self):
         self.wrf['PRCP'] = self.wrf['RAINNC']
-        self.wrf['PRCP'].values = self.calc_precip(self.wrf['RAINNC'],self.wrf['I_RAINNC'])
+        self.wrf['PRCP'].values = self.calc_precip()
         
         # Compute accumulative precip for each day
         self.new_array['PRCP'] = self.wrf['PRCP'].resample(XTIME = '24H').max(dim = 'XTIME')
         
-        new_array.to_netcdf(path)
+        self.new_array.to_netcdf('/bsuhome/stanleyakor/wateryear_2022/'+self.save_name)
 
 
 class getclosest():
@@ -169,7 +191,7 @@ class getclosest():
         self.wrf = xr.open_dataset(path_to_wrf_file)
         self.wrf_file = self.wrf['PRCP']
         self.start = '2021-10-01'
-        self.end = '2022-01-14'
+        self.end = '2022-09-30'
         self.feat = {}
         self.save = save
         self.save_name = save_name
@@ -237,7 +259,7 @@ class getclosest():
             df_filtered = [value * 25.4 for value in df_filtered]
             ixlat,ixlon = dict[str(sta_id[id])]
             wrf_precip = self.extract_precip(ixlat,ixlon)
-            wrf_precip = wrf_precip[2:108]
+            wrf_precip = wrf_precip[2:-1]
             bias = (df_filtered - wrf_precip).mean()
             self.feat[sta_id[id]] = bias
             names[sta_id[id]]=sta_names[id]
@@ -274,7 +296,7 @@ class getclosest():
             df_filtered = [value * 25.4 for value in df_filtered]
             ixlat,ixlon = dict[str(sta_id[id])]
             wrf_precip = self.extract_precip(ixlat,ixlon)
-            wrf_precip = wrf_precip[2:108]
+            wrf_precip = wrf_precip[2:-1]
             bias = (df_filtered - wrf_precip).mean()
             self.feat[sta_id[id]] = bias
             names[sta_id[id]]=sta_names[id]
@@ -296,7 +318,7 @@ class getclosest():
         all_dict = self.get_wrf_xy()
         dict, filtered_dict = self.read_csv()
         allkeys = np.array(list(dict.keys()))
-        fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+        fig, axes = plt.subplots(2, 3, figsize=(10, 6))
                 
         for index, key in enumerate(allkeys):
             ax = axes[index // 3, index % 3]
@@ -310,14 +332,15 @@ class getclosest():
             df_filtered = df[generic].tolist()
             df_filtered = [value * 25.4 for value in df_filtered]
             ixlat,ixlon = all_dict[str(key)]
-            wrf_precip = self.extract_precip(ixlat,ixlon)[2:108] # should be adjust according to the input data
+            wrf_precip = self.extract_precip(ixlat,ixlon)[2:-1] # should be adjust according to the input data
             ax.plot(date_range,df_filtered,'r--', label=f'snotel')
             ax.plot(date_range,wrf_precip, label=f'WSM6')
             ax.set_title(f'{filtered_dict[key]} ({key})')
             ax.legend()
             
             if row == 1:  # Only for the bottom row
-                ax.set_xlabel('Day')
+                pass
+                #ax.set_xlabel('Day')
             else:
                 ax.set_xlabel('')
                 
@@ -327,8 +350,9 @@ class getclosest():
         
                     # Set x-axis locator and formatter for exterior plots
             if row ==1:
-                ax.xaxis.set_major_locator(mdates.WeekdayLocator())
-                ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+                ax.xaxis.set_major_locator(mdates.MonthLocator())
+                ax.xaxis.set_major_formatter(mdates.DateFormatter('%b'))
+                #ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
                 ax.tick_params(axis='x', rotation=45)
             else:
                 ax.xaxis.set_major_locator(plt.NullLocator())  # Hide x-axis locator
@@ -434,7 +458,7 @@ class CompareScheme(getclosest):
 
             for key1,value in wrf_files.items():
                 
-                wrf_precip = self.extract(value['PRCP'],ixlat,ixlon)[2:108] # should be adjust according to the input data
+                wrf_precip = self.extract(value['PRCP'],ixlat,ixlon)[2:-1] # should be adjust according to the input data
                 ax.plot(date_range,wrf_precip, label=f'{key1}')
 
             ax.set_title(f'{filtered_dict[key]} ({key})')
@@ -563,7 +587,7 @@ def plot_wrf_domain(d01_path, d02_path, save = False):
     ax.add_patch(rect)
     
     # Add text labels for domains
-    ax.text(lon.min(), lat.max(), 'D01', color='black', fontsize=12, fontweight='bold', va='top', ha='left')
+    ax.text(lon.min(), lat.max(), 'D01', color='white', fontsize=12, fontweight='bold', va='top', ha='left')
     ax.text(file_2_lonmin, file_2_latmax, 'D02', color='black', fontsize=12, fontweight='bold', va='bottom', ha='left')
     
     plt.title('Elevation (m)')
@@ -571,8 +595,8 @@ def plot_wrf_domain(d01_path, d02_path, save = False):
     # Modify latitude and longitude labels
     lon_ticks = ax.get_xticks()
     lat_ticks = ax.get_yticks()
-    lon_labels = [f'{abs(lon):.2f}°{"W" if lon < 0 else "E"}' for lon in lon_ticks]
-    lat_labels = [f'{abs(lat):.2f}°{"S" if lat < 0 else "N"}' for lat in lat_ticks]
+    lon_labels = [f'{abs(lon):.0f}°{"W" if lon < 0 else "E"}' for lon in lon_ticks]
+    lat_labels = [f'{abs(lat):.0f}°{"S" if lat < 0 else "N"}' for lat in lat_ticks]
     ax.set_xticklabels(lon_labels)
     ax.set_yticklabels(lat_labels)
     
