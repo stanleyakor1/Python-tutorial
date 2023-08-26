@@ -438,7 +438,7 @@ class CompareScheme(getclosest):
         allkeys = np.array(list(filtered_dict.keys()))
         
         #print(filtered_dict)
-        fig, axes = plt.subplots(2, 3, figsize=(10, 6))
+        fig, axes = plt.subplots(2, 3, figsize=(14, 8))
                 
         for index, key in enumerate(allkeys):
 
@@ -624,7 +624,7 @@ Extract show height and SWE from snotel sites and compare with snodas/wrf on pea
 
 class hist(CompareScheme):
     def __init__(self, path_to_header, path_to_csv, path_to_geog, path_to_wrf_file,\
-                 save_name,reference,snodas_regrid_file, case='snowh', max_accum_date='2022-04-01', save=True):
+                 save_name,reference,snodas_regrid_file, case, max_accum_date='2022-04-01', save=True):
         super().__init__(path_to_header, path_to_csv, path_to_geog, path_to_wrf_file, save_name,reference,save)
 
         self.max_accum_date = max_accum_date
@@ -634,70 +634,98 @@ class hist(CompareScheme):
         self.hist_snodas = {}
         self.hist_Wdm6 = {}
         self.hist_Wsm6 = {}
-        #self.hist_Thom = {}
+        self.hist_Thom = {}
         self.hist_Mor = {}
 
     def make(self,diction):
         self.allfile = self.compare_multiple(diction)
-        if self.case == 'snowh': 
-            a, b = self.read_csv2()
-            all_dict = self.get_wrf_xy() #convert station lat/lon to wrf/snodas index
+        
+        if self.case == 'snowh': #snow height
+            xy = 'Snow Depth'
+            var = 'SNOWH'
+            
+        if self.case == 'swe':   #Snow water equivalent
+            xy = 'Snow Water Equivalent'
+            var = 'SNOW'
+            
+        a, b = self.read_csv2()
+        all_dict = self.get_wrf_xy() #convert station lat/lon to wrf/snodas index
              #read from snotel
-            for key,value in b.items():
-                name = f'df_{key}.csv'
-                path = self.path_to_csv+'/'+name
-                generic = f'{value} ({key}) Snow Depth (in) Start of Day Values'
-                df = pd.read_csv(path)
-                df_value = df.loc[df['Date'] == self.max_accum_date, generic].iloc[0]
+        for key,value in b.items():
+            name = f'df_{key}.csv'
+            path = self.path_to_csv+'/'+name
+            generic = f'{value} ({key}) {xy} (in) Start of Day Values'
+            df = pd.read_csv(path)
+            df_value = df.loc[df['Date'] == self.max_accum_date, generic].iloc[0]
     
                 # Convert the value from inches to millimeters
-                self.hist_snotel[str(key)] = df_value* 25.4
+            self.hist_snotel[str(key)] = df_value* 25.4
 
             #print(self.hist_snotel)
             #read snodas snow height values;
-            for key, value in all_dict.items():
-                ixlat,ixlon = all_dict[str(key)]
-                snodas_value = self.extract(self.snodas,ixlat,ixlon)
-                self.hist_snodas[str(key)] = snodas_value.astype(float)
+        for key, value in all_dict.items():
+            ixlat,ixlon = all_dict[str(key)]
+            snodas_value = self.extract(self.snodas,ixlat,ixlon)
+            self.hist_snodas[str(key)] = snodas_value.astype(float)
 
             #print(self.hist_snodas)
 
             #Get values from the various schemes
-            for key,value in self.allfile.items():
-                if key == 'WSM6':
-                    for ID, name in all_dict.items():
-                        ixlat,ixlon = all_dict[str(ID)]
-                        wrf = value['SNOWH'].isel(XTIME = 184) #change so it is done automatically!
+        for key,value in self.allfile.items():
+            if key == 'WSM6':
+                for ID, name in all_dict.items():
+                    ixlat,ixlon = all_dict[str(ID)]
+                    wrf = value[var].isel(XTIME = 184) #change so it is done automatically!
+                    
+                    if self.case == 'swe': 
+                        wrf_value = self.extract(wrf,ixlat,ixlon)
+                    if self.case == 'snowh':
                         wrf_value = self.extract(wrf,ixlat,ixlon)*1e3
-                        self.hist_Wsm6[ID] = wrf_value
+                         
+                    self.hist_Wsm6[ID] = wrf_value
 
-                if key == 'WDM6':
-                    for ID, name in all_dict.items():
-                        ixlat,ixlon = all_dict[str(ID)]
-                        wrf = value['SNOWH'].isel(XTIME = 184) #change so it is done automatically!
+            if key == 'WDM6':
+                for ID, name in all_dict.items():
+                    ixlat,ixlon = all_dict[str(ID)]
+                    wrf = value[var].isel(XTIME = 184) #change so it is done automatically!
+                    
+                    if self.case == 'swe': 
+                        wrf_value = self.extract(wrf,ixlat,ixlon)
+                    if self.case == 'snowh':
                         wrf_value = self.extract(wrf,ixlat,ixlon)*1e3
-                        self.hist_Wdm6[ID] = wrf_value
+                         
+                    self.hist_Wdm6[ID] = wrf_value
                         
-                if key == 'Morrison':
-                    for ID, name in all_dict.items():
-                        ixlat,ixlon = all_dict[str(ID)]
-                        wrf = value['SNOWH'].isel(XTIME = 184) #change so it is done automatically!
+            if key == 'Morrison':
+                for ID, name in all_dict.items():
+                    ixlat,ixlon = all_dict[str(ID)]
+                    wrf = value[var].isel(XTIME = 184) #change so it is done automatically!
+                    
+                    if self.case == 'swe': 
+                        wrf_value = self.extract(wrf,ixlat,ixlon)
+                    if self.case == 'snowh':
                         wrf_value = self.extract(wrf,ixlat,ixlon)*1e3
-                        self.hist_Mor[ID] = wrf_value
+                         
+                    self.hist_Mor[ID] = wrf_value
 
-                # if key == 'Thompson':
-                #     for ID, name in all_dict.items():
-                #         ixlat,ixlon = all_dict[str(ID)]
-                #         wrf = value['SNOWH'].isel(XTIME = 184) #change so it is done automatically!
-                #         wrf_value = self.extract(wrf,ixlat,ixlon)*1e3
-                #         self.hist_Wsm6[ID] = wrf_value
+            if key == 'Thompson':
+                for ID, name in all_dict.items():
+                    ixlat,ixlon = all_dict[str(ID)]
+                    wrf = value[var].isel(XTIME = 184) #change so it is done automatically!
+                    
+                    if self.case == 'swe': 
+                        wrf_value = self.extract(wrf,ixlat,ixlon)
+                    if self.case == 'snowh':
+                        wrf_value = self.extract(wrf,ixlat,ixlon)*1e3
+                         
+                    self.hist_Thom[ID] = wrf_value
 
-            return self.hist_snodas, self.hist_snotel, self.hist_Wsm6, self.hist_Wdm6, self.hist_Mor
+        return self.hist_snodas, self.hist_snotel, self.hist_Wsm6, self.hist_Wdm6, self.hist_Mor,self.hist_Thom
 
 
 
-    def make_plots(self, diction):
-        self.hist_snodas, self.hist_snotel, self.hist_Wsm6, self.hist_Wdm6, self.hist_Mor = self.make(diction)
+    def make_plots(self, diction,title):
+        self.hist_snodas, self.hist_snotel, self.hist_Wsm6, self.hist_Wdm6, self.hist_Mor, self.hist_Thom = self.make(diction)
         a, sta_names = self.read_csv2()
 
         # remove the above keys from self.hist_snodas, self.hist_snotel, self.hist_Wsm6, self.hist_Wdm6, self.hist_Mor
@@ -710,9 +738,10 @@ class hist(CompareScheme):
         self.hist_Wsm6 = {key: value for key, value in self.hist_Wsm6.items() if key not in keys_to_remove}
         self.hist_Wdm6 = {key: value for key, value in self.hist_Wdm6.items() if key not in keys_to_remove}
         self.hist_Mor = {key: value for key, value in self.hist_Mor.items() if key not in keys_to_remove}
+        self.hist_Thom = {key: value for key, value in self.hist_Thom.items() if key not in keys_to_remove}
         sta_names = {key: value for key, value in sta_names.items() if str(key) not in keys_to_remove}
     
-        fig, axes = plt.subplots(7, 3, figsize=(15, 20))  # Adjust figsize as needed
+        fig, axes = plt.subplots(7, 3, figsize=(12, 25))  # Adjust figsize as needed
     
         non_empty_figure_count = 0
         max_figures = 21
@@ -726,13 +755,14 @@ class hist(CompareScheme):
                         'Snotel': self.hist_snotel[key],
                         'WSM6': self.hist_Wsm6[key],
                         'WDM6': self.hist_Wdm6[key],
+                        'Thompson': self.hist_Thom[key],
                         'MOR': self.hist_Mor[key]}
     
                 keys = list(data.keys())
                 values = list(data.values())
     
                 # Specify different colors for the bars
-                colors = ['blue', 'orange', 'green', 'red', 'purple']
+                colors = ['blue', 'orange', 'green', 'red', 'purple', 'black']
     
                 # Create a bar plot with specified colors
                 bars = ax.bar(keys, values, color=colors)
@@ -746,6 +776,11 @@ class hist(CompareScheme):
                     ax.set_xticks([])  # Remove x-axis ticks and labels for other rows
     
                 if col == 0:  # Add y-axis labels only for the first column
-                    ax.set_ylabel('Snow height (mm)')
+                    ax.set_ylabel(title)
     
                 non_empty_figure_count += 1
+
+        if self.save:
+            plt.savefig(self.save_name+'.pdf',dpi=600)
+
+#TODO: Compute day of peak SWE/SNOWH accumulation
