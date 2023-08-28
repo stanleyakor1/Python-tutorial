@@ -115,13 +115,13 @@ def get_wrf_xy(geog,lat, lon):
     ixlon = np.argwhere(dist == mindist)[0][1]
     return ixlat, ixlon
 
-def make_snodas_Wrf_plots(file_list, title, lat, lon, save_title,label, show=True, subplots=(1,3), colour='terrain', save=True):
+def make_snodas_Wrf_plots(file_list, title, lat, lon, save_title,label, show=True, subplots=(1,3), colour='terrain', size = (10, 15),save=True):
 
     vmax = max(np.nanmax(ds.values) for ds in file_list)
     vmin = min(np.nanmin(ds.values) for ds in file_list)
 
-    fig = plt.figure(figsize=(10, 15))
-
+    fig = plt.figure(figsize=size)
+        
     grid = ImageGrid(fig, 111,          # as in plt.subplot(111)
                  nrows_ncols=subplots,
                  axes_pad=0.3,
@@ -336,7 +336,6 @@ class getclosest():
             ax.plot(date_range,df_filtered,'r--', label=f'snotel')
             ax.plot(date_range,wrf_precip, label=f'WSM6')
             ax.set_title(f'{filtered_dict[key]} ({key})')
-            ax.legend()
             
             if row == 1:  # Only for the bottom row
                 pass
@@ -346,7 +345,9 @@ class getclosest():
                 
             if col == 0:
                 ax.set_ylabel('Precipitation (mm)')
-            ax.legend()
+
+            if index == 0:
+                ax.legend()
         
                     # Set x-axis locator and formatter for exterior plots
             if row ==1:
@@ -438,7 +439,7 @@ class CompareScheme(getclosest):
         allkeys = np.array(list(filtered_dict.keys()))
         
         #print(filtered_dict)
-        fig, axes = plt.subplots(2, 3, figsize=(14, 8))
+        fig, axes = plt.subplots(2, 3, figsize=(10, 6))
                 
         for index, key in enumerate(allkeys):
 
@@ -462,7 +463,9 @@ class CompareScheme(getclosest):
                 ax.plot(date_range,wrf_precip, label=f'{key1}')
 
             ax.set_title(f'{filtered_dict[key]} ({key})')
-            ax.legend()
+
+            if index == 0:
+                ax.legend()
             
             if row == 1:  # Only for the bottom row
                 pass
@@ -472,7 +475,6 @@ class CompareScheme(getclosest):
                 
             if col == 0:
                 ax.set_ylabel('Precipitation (mm)')
-            ax.legend()
         
                     # Set x-axis locator and formatter for exterior plots
             if row ==1:
@@ -636,6 +638,7 @@ class hist(CompareScheme):
         self.hist_Wsm6 = {}
         self.hist_Thom = {}
         self.hist_Mor = {}
+        self.ttime = 184
 
     def make(self,diction):
         self.allfile = self.compare_multiple(diction)
@@ -675,7 +678,7 @@ class hist(CompareScheme):
             if key == 'WSM6':
                 for ID, name in all_dict.items():
                     ixlat,ixlon = all_dict[str(ID)]
-                    wrf = value[var].isel(XTIME = 184) #change so it is done automatically!
+                    wrf = value[var].isel(XTIME = self.ttime) #change so it is done automatically!
                     
                     if self.case == 'swe': 
                         wrf_value = self.extract(wrf,ixlat,ixlon)
@@ -687,7 +690,7 @@ class hist(CompareScheme):
             if key == 'WDM6':
                 for ID, name in all_dict.items():
                     ixlat,ixlon = all_dict[str(ID)]
-                    wrf = value[var].isel(XTIME = 184) #change so it is done automatically!
+                    wrf = value[var].isel(XTIME = self.ttime) #change so it is done automatically!
                     
                     if self.case == 'swe': 
                         wrf_value = self.extract(wrf,ixlat,ixlon)
@@ -699,7 +702,7 @@ class hist(CompareScheme):
             if key == 'Morrison':
                 for ID, name in all_dict.items():
                     ixlat,ixlon = all_dict[str(ID)]
-                    wrf = value[var].isel(XTIME = 184) #change so it is done automatically!
+                    wrf = value[var].isel(XTIME = self.ttime) #change so it is done automatically!
                     
                     if self.case == 'swe': 
                         wrf_value = self.extract(wrf,ixlat,ixlon)
@@ -711,7 +714,7 @@ class hist(CompareScheme):
             if key == 'Thompson':
                 for ID, name in all_dict.items():
                     ixlat,ixlon = all_dict[str(ID)]
-                    wrf = value[var].isel(XTIME = 184) #change so it is done automatically!
+                    wrf = value[var].isel(XTIME = self.ttime) #change so it is done automatically!
                     
                     if self.case == 'swe': 
                         wrf_value = self.extract(wrf,ixlat,ixlon)
