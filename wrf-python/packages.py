@@ -1,6 +1,8 @@
 import xarray as xr
 import xesmf as xe
-import numpy as np 
+import math
+import numpy as np
+from scipy.stats import spearmanr
 import pathlib as pl
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -786,4 +788,137 @@ class hist(CompareScheme):
         if self.save:
             plt.savefig(self.save_name+'.pdf',dpi=600)
 
-#TODO: Compute day of peak SWE/SNOWH accumulation
+'''
+Compare correlation coefficient (wrf and snotel)
+across the various microphysics schemes
+
+'''
+
+class station_corr(CompareScheme):
+    def __init__(self, path_to_header, path_to_csv, path_to_geog, path_to_wrf_file, save_name, reference, save = True):
+        super().__init__(path_to_header, path_to_csv, path_to_geog, path_to_wrf_file, save_name,save)
+
+        self.var_list = ['PRCP', 'SNOW', 'SNOWH']
+
+    def has_nan(self,lst):
+        for item in lst:
+            if isinstance(item, (float, int)) and math.isnan(item):
+                return True
+        return False
+
+    def worker(self,diction,scheme):
+        site_name, precip_cor, snowh_cor, swe_cor, precip_spear, snowh_spear, swe_spear = [], [], [], [], [], [], []
+        # why does sthe dictionary key get renamed from WSM6 to true?
+        if scheme == 'WSM6':
+            scheme = True  
+            
+        all_dict = self.get_wrf_xy()
+        allfiles = self.compare_multiple(diction)
+        a, b = self.read_csv2()
+
+        scheme_files = allfiles[scheme]
+        #Extract variable from snotel csv and wrf
+        var_to_fname = {
+                        'PRCP': 'Precipitation',
+                        'SNOW': 'Snow Water Equivalent',
+                        'SNOWH': 'Snow Depth'
+                    } 
+        
+        for sta_id,sta_name,  in b.items():
+            site_name.append(f'{sta_name} ({sta_id})')
+            for var in self.var_list:
+                ixlat,ixlon = all_dict[str(sta_id)]
+                fname = var_to_fname.get(var, 'Unknown Variable')
+                generic = f'{sta_name} ({sta_id}) {fname} (in) Start of Day Values'
+                if var == 'PRCP':
+                    generic =f'{sta_name} ({sta_id}) {fname} Accumulation (in) Start of Day Values' 
+                name = f'df_{sta_id}.csv'
+                path = self.path_to_csv+'/'+name
+                df = pd.read_csv(path)
+                df = df[(df['Date'] >=self.start) & (df['Date'] <= self.end)]
+                df_filtered = df[generic].tolist()
+                df_filtered = [value * 25.4 for value in df_filtered]
+               
+                # Fill up nan values with preceding values (somehow, snotel data has some empty values!)
+                if self.has_nan(df_filtered):
+                        for i in range(1, len(df_filtered)):
+                            if math.isnan(df_filtered[i]):
+                                df_filtered[i] = df_filtered[i - 1]
+                
+                if var == 'PRCP':
+                    wrf= self.extract(scheme_files['PRCP'],ixlat,ixlon)[2:-1] # should be adjust according to the input data
+                    # #compute correlation
+                    corr = np.corrcoef(df_filtered,wrf)[0,1]
+                    correlation, p_value = spearmanr(df_filtered,wrf)
+                    precip_cor.append(corr)
+                    precip_spear.append(correlation)
+                    
+                        
+                if var == 'SNOW':
+                    wrf= self.extract(scheme_files['SNOW'],ixlat,ixlon)[2:-1] # should be adjust according to the input data
+                    # #compute correlation
+                    corr = np.corrcoef(df_filtered,wrf)[0,1]
+                    swe_cor.append(corr)
+                    swe_spear.append(correlation)
+                    
+                if var == 'SNOWH':
+                    wrf= self.extract(scheme_files['SNOWH'],ixlat,ixlon)[2:-1] # should be adjust according to the input data
+                    # #compute correlation
+                    corr = np.corrcoef(df_filtered,wrf)[0,1]
+                    snowh_cor.append(corr)
+                    snowh_spear.append(correlation)
+
+        return pd.DataFrame({'Name': site_name,
+                             'PRCP_cor': precip_cor,
+                             'PRCP_spear': precip_spear,
+                             'SNOWH_cor': snowh_cor,
+                             'SNOWH_spear': snowh_spear,
+                             'SWE_cor': swe_cor,
+                             'SWE_spear': swe_spear})
+
+    def make(self, diction):
+        wsm6_df = self.worker(diction,'WSM6')
+        wdm6_df = self.worker(diction,'WDM6')
+        th_df = self.worker(diction,'Thompson')
+        mor_df = self.worker(diction,'Morrison')
+        listt = [wsm6_df,wdm6_df, th_df,  mor_df ]
+
+         # precip corr dataframe
+        precip_correlation = pd.DataFrame({'Name' : wsm6_df['Name'],
+                                            'WSM6_cor' : wsm6_df['PRCP_cor'],
+                                            'WDM6_cor' : wdm6_df['PRCP_cor'],
+                                            'Thompson_cor' : th_df['PRCP_cor'],
+                                            'Morrison_cor' : mor_df['PRCP_cor']
+                                            })
+        precip_correlation.set_index('Name', inplace=True)
+
+        ## swe corr dataframe
+        swe_correlation = pd.DataFrame({'Name' : wsm6_df['Name'],
+                                            'WSM6_cor' : wsm6_df['SWE_cor'],
+                                            'WDM6_cor' : wdm6_df['SWE_cor'],
+                                            'Thompson_cor' : th_df['SWE_cor'],
+                                            'Morrison_cor' : mor_df['SWE_cor']
+                                            })
+        swe_correlation.set_index('Name', inplace=True)
+
+        ## snowh corr dataframe
+        swh_correlation = pd.DataFrame({'Name' : wsm6_df['Name'],
+                                            'WSM6_cor' : wsm6_df['SNOWH_cor'],
+                                            'WDM6_cor' : wdm6_df['SNOWH_cor'],
+                                            'Thompson_cor' : th_df['SNOWH_cor'],
+                                            'Morrison_cor' : mor_df['SNOWH_cor']
+                                            })
+        swh_correlation.set_index('Name', inplace=True)
+
+        print(" Precipitation correlation coefficient across microphysics schemes")
+        print(precip_correlation)
+        print("  ")
+
+        print(" SWE correlation coefficient across microphysics schemes")
+        print(swe_correlation)
+        print("  ")
+        
+        print(" snow height correlation coefficient across microphysics schemes")
+        print(swh_correlation)
+
+    
