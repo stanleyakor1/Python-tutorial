@@ -85,6 +85,38 @@ def max_swe(ds):
 
     return i
 
+    '''
+Snodas data for the boise region has some nan values (perhaps due to missing records)
+so we replace the nan value in a grid cell by taking the average of the neigbouring
+non-nan grid cells.
+
+'''
+'''
+    Usage:
+'''
+def replace_nan_with_avg(da):
+    mask = np.isnan(da)
+    for i in range(da.shape[0]):
+        for j in range(da.shape[1]):
+            if mask[i, j]:
+                neighbors = []
+                for di in [-1, 0, 1]:
+                    for dj in [-1, 0, 1]:
+                        ni, nj = i + di, j + dj
+                        if 0 <= ni < da.shape[0] and 0 <= nj < da.shape[1] and not np.isnan(da[ni, nj]):
+                            neighbors.append(da[ni, nj])
+                if neighbors:
+                    da[i, j] = np.mean(neighbors)
+                    
+def calculate_r_squared(observed, predicted):
+    mean_observed = observed.mean(dim = ('south_north', 'west_east'))
+    ssr = (observed - predicted) ** 2
+    ssr = ssr.sum(dim =  ('south_north', 'west_east'))
+    sst = (observed - mean_observed) ** 2
+    sst = sst.sum(dim =  ('south_north', 'west_east'))
+    r_squared = 1 - (ssr / sst)
+    return r_squared
+
 
 #Regrid snodas data to wrf resolution
 # sn_regrid = regrid_snodas(path2,snodas_file,'SWE')
@@ -102,9 +134,7 @@ def regrid_snodas(wrf_file, snodas_file, var):
 
     # Create xESMF regridder using the target grid
     regridder = xe.Regridder(ds_snodas, target_grid, 'bilinear')
-
     return regridder(ds_snodas)
-
 
 def get_wrf_xy(geog,lat, lon):
     #lat = 38.89
@@ -117,7 +147,8 @@ def get_wrf_xy(geog,lat, lon):
     ixlon = np.argwhere(dist == mindist)[0][1]
     return ixlat, ixlon
 
-def make_snodas_Wrf_plots(file_list, title, lat, lon, save_title,label, show=True, subplots=(1,3), colour='terrain', size = (10, 15),save=True):
+def make_snodas_Wrf_plots(file_list, title, lat, lon, save_title,label, show=True,\
+                          subplots=(1,3), colour='terrain', size = (10, 15),save=True):
 
     vmax = max(np.nanmax(ds.values) for ds in file_list)
     vmin = min(np.nanmin(ds.values) for ds in file_list)
@@ -135,7 +166,8 @@ def make_snodas_Wrf_plots(file_list, title, lat, lon, save_title,label, show=Tru
                 )
 
     for i, ax in enumerate(grid):
-        im = ax.imshow(file_list[i],extent=(lon.min(), lon.max(), lat.min(), lat.max()),vmax=vmax, vmin = vmin, cmap=colour, origin='lower', alpha=1.0)
+        im = ax.imshow(file_list[i],extent=(lon.min(), lon.max(), lat.min(),\
+                                            lat.max()),vmax=vmax, vmin = vmin, cmap=colour, origin='lower', alpha=1.0)
         ax.set_title(title[i])
         ax.xaxis.set_major_locator(plt.MultipleLocator(base=1.0))
         ax.yaxis.set_major_locator(plt.MultipleLocator(base=0.4))
@@ -534,7 +566,8 @@ class plot_snotel_grid(CompareScheme):
                 ax.scatter(lo, la, marker='D', s=15, color='green')
                 ax.text(lo - 0.02, la + 0.005, key, size=9, weight='bold')
         
-        im = ax.imshow(self.elevation, extent=(self.lon.min(), self.lon.max(), self.lat.min(), self.lat.max()), cmap='terrain', origin='lower', alpha=1.0)
+        im = ax.imshow(self.elevation, extent=(self.lon.min(), self.lon.max(), self.lat.min(),\
+                                               self.lat.max()), cmap='terrain', origin='lower', alpha=1.0)
 
   
         plt.title('Elevation (m)')
@@ -578,7 +611,7 @@ def plot_wrf_domain(d01_path, d02_path, save = False):
     file_2_lonmax = file_2.XLONG.isel(Time=0).max().values
     
     # plot height of domain 1 and map out domain 2 using the domain boundaries
-    fig, ax = plt.subplots(figsize=(8, 6))
+    fig, ax = plt.subplots(figsize=(6, 4))
     
     im = ax.imshow(height, extent=(lon.min(), lon.max(), lat.min(), lat.max()), cmap='terrain', origin='lower', alpha=1.0)
     
